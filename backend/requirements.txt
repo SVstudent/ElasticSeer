@@ -1,0 +1,33 @@
+# FastAPI and web server
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+
+# Elasticsearch
+elasticsearch==8.12.0
+
+# Redis
+redis==5.0.1
+
+# HTTP client
+httpx==0.26.0
+
+# Slack SDK
+slack-sdk==3.26.2
+
+# GitHub API
+PyGithub==2.1.1
+
+# Jira API
+jira==3.6.0
+
+# Google Gemini
+google-generativeai>=0.8.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio==0.23.3
+
+# YAML support
+pyyaml>=6.0.1

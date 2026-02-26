@@ -1,0 +1,4 @@
+# file: /Users/sathvikvempati/Desktop/ElasticSentinel/backend/app/observer_engine.py
+# hypothesis_version: 6.151.9
+
+[0.0, 1.1, 3.0, 5.0, 3600, '@timestamp', 'Accept', 'Content-Type', '__main__', 'anomalies', 'anomaly', 'application/json', 'calculated_at', 'columns', 'current_value', 'detected_at', 'deviation_sigma', 'error_rate', 'execution_id', 'expected_value', 'id', 'incident_id', 'mean', 'metric', 'name', 'p99_latency', 'response', 'service', 'severity', 'stddev', 'threshold', 'throughput', 'unknown', 'values']

@@ -1,0 +1,22 @@
+[
+  {
+    "name": "ElasticSeer - Generate Code Fix",
+    "id": "07922671-71f0-47c8-b721-984abacc9a17",
+    "url": "http://localhost:8001/api/elasticseer/generate_fix"
+  },
+  {
+    "name": "ElasticSeer - Create GitHub PR",
+    "id": "23ab29b1-4681-441b-ab50-f8860353be6e",
+    "url": "http://localhost:8001/api/elasticseer/create_pr"
+  },
+  {
+    "name": "ElasticSeer - Send Slack Notification",
+    "id": "246da23e-76f2-490a-896b-814e32b020bc",
+    "url": "http://localhost:8001/api/elasticseer/send_slack"
+  },
+  {
+    "name": "ElasticSeer - Diagnose Root Cause",
+    "id": "82577ea1-bc97-4fa7-90f7-1f036e8fbb0b",
+    "url": "http://localhost:8001/api/elasticseer/diagnose"
+  }
+]

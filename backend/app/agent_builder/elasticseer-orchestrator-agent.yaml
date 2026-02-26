@@ -1,0 +1,460 @@
+name: elasticseer-orchestrator
+description: Central AI agent that orchestrates autonomous incident detection, diagnosis, and remediation for ElasticSeer platform
+version: 1.0.0
+
+# Built-in Elasticsearch tools that the orchestrator can use
+tools:
+  - name: elasticsearch_search
+    type: builtin
+    description: Search and query Elasticsearch indices for metrics, logs, incidents, and code
+  
+  - name: list_indices
+    type: builtin
+    description: List available Elasticsearch indices
+  
+  - name: get_index_mapping
+    type: builtin
+    description: Get the mapping/schema of an Elasticsearch index
+
+  # Custom tools for the orchestrator
+  - name: detect_anomalies
+    type: custom
+    description: Detect anomalies in metrics using statistical analysis and baseline comparison
+    implementation: python
+    module: app.agent_builder.custom_tools
+    function: detect_anomalies
+    parameters:
+      service:
+        type: string
+        description: Service name to monitor (e.g., api-gateway, database)
+        required: false
+      metric_name:
+        type: string
+        description: Specific metric to analyze (e.g., p99_latency, error_rate)
+        required: false
+      time_range:
+        type: string
+        description: Time range for analysis (e.g., 1h, 24h, 7d)
+        default: "1h"
+    returns:
+      type: array
+      description: List of detected anomalies with severity and deviation
+  
+  - name: search_similar_incidents
+    type: custom
+    description: Search for similar past incidents using hybrid search (BM25 + vector similarity)
+    implementation: python
+    module: app.agent_builder.researcher_tools
+    function: search_similar_incidents
+    parameters:
+      anomaly:
+        type: object
+        description: Current anomaly information
+        required: true
+        properties:
+          metric:
+            type: string
+          service:
+            type: string
+          currentValue:
+            type: number
+          expectedValue:
+            type: number
+          severity:
+            type: string
+      top_k:
+        type: integer
+        description: Number of similar incidents to return
+        default: 5
+    returns:
+      type: array
+      description: Similar past incidents with root causes and resolutions
+  
+  - name: search_relevant_code
+    type: custom
+    description: Search code repository for relevant functions and modules using hybrid search
+    implementation: python
+    module: app.agent_builder.researcher_tools
+    function: search_relevant_code
+    parameters:
+      query:
+        type: string
+        description: Search query describing the code to find
+        required: true
+      filters:
+        type: object
+        description: Optional filters for language, repository, or file path
+        required: false
+      top_k:
+        type: integer
+        description: Number of code snippets to return
+        default: 10
+    returns:
+      type: array
+      description: Relevant code snippets with relevance scores
+  
+  - name: correlate_incidents
+    type: custom
+    description: Correlate current anomaly with historical patterns and similar incidents
+    implementation: python
+    module: app.agent_builder.correlator_tools
+    function: correlate_incidents
+    parameters:
+      anomaly:
+        type: object
+        description: Current anomaly to correlate
+        required: true
+      similar_incidents:
+        type: array
+        description: List of similar past incidents
+        required: true
+    returns:
+      type: object
+      description: Correlation analysis with patterns and insights
+  
+  - name: diagnose_root_cause
+    type: custom
+    description: Diagnose the root cause of an incident using AI analysis
+    implementation: python
+    module: app.agent_builder.diagnoser_tools
+    function: diagnose_root_cause
+    parameters:
+      anomaly:
+        type: object
+        description: Anomaly information
+        required: true
+      correlation:
+        type: object
+        description: Correlation analysis results
+        required: true
+      relevant_code:
+        type: array
+        description: Relevant code snippets
+        required: true
+    returns:
+      type: object
+      description: Root cause diagnosis with confidence score
+  
+  - name: generate_remediation
+    type: custom
+    description: Generate code fix for the diagnosed issue using AI
+    implementation: python
+    module: app.agent_builder.custom_tools
+    function: generate_remediation
+    parameters:
+      diagnosis:
+        type: object
+        description: Root cause diagnosis
+        required: true
+      code_context:
+        type: array
+        description: Relevant code files
+        required: true
+    returns:
+      type: object
+      description: Generated code fix with explanation
+  
+  - name: create_github_pr
+    type: custom
+    description: Create a GitHub pull request with the remediation code
+    implementation: python
+    module: app.agent_builder.custom_tools
+    function: create_github_pr
+    parameters:
+      remediation:
+        type: object
+        description: Remediation code and explanation
+        required: true
+      incident_id:
+        type: string
+        description: Incident ID for reference
+        required: true
+    returns:
+      type: object
+      description: Created PR information with URL
+  
+  - name: send_slack_notification
+    type: custom
+    description: Send notification to Slack war room channel
+    implementation: python
+    module: app.agent_builder.custom_tools
+    function: send_slack_notification
+    parameters:
+      message:
+        type: string
+        description: Message to send
+        required: true
+      incident_id:
+        type: string
+        description: Incident ID
+        required: true
+      severity:
+        type: string
+        description: Incident severity
+        required: true
+    returns:
+      type: object
+      description: Slack message delivery status
+
+# System prompt defining the orchestrator's role and behavior
+system_prompt: |
+  You are the ElasticSeer Orchestrator - an ADAPTIVE AI agent responsible for autonomous incident detection, 
+  diagnosis, and remediation. You coordinate the entire incident response workflow from anomaly detection 
+  to code fix deployment.
+  
+  ## CRITICAL: ADAPTIVE FILE SELECTION
+  
+  **YOU MUST BE INTELLIGENT ABOUT WHICH FILES TO FIX:**
+  
+  1. **NEVER blindly use file paths from incident data** - they may be outdated or incorrect
+  2. **ALWAYS search for relevant code first** using search_relevant_code
+  3. **USE THE FILES YOU ACTUALLY FIND** during investigation, not what's stored in the incident
+  4. **WHEN USER APPROVES**, use the file YOU identified as relevant, not the incident's stored file
+  5. **BE ADAPTIVE** - if you find a better file during investigation, USE IT
+  
+  ### Example of CORRECT Adaptive Behavior:
+  
+  ```
+  Incident says: target_file = "src/user_service/service.py"
+  
+  You search and find: "src/auth/jwt_validator.py" contains JWT validation logic
+  
+  User says: "go ahead"
+  
+  YOU SHOULD: Generate fix for "src/auth/jwt_validator.py" (the file YOU found)
+  NOT: Generate fix for "src/user_service/service.py" (the outdated incident data)
+  ```
+  
+  ### When Creating PRs:
+  
+  - Use the file path YOU discovered during code search
+  - Ignore the incident's stored target_file if you found a better match
+  - Trust your investigation over stored data
+  - The system will handle missing files gracefully with FIXES.md fallback
+  
+  ## Your Responsibilities:
+  
+  1. **DETECT**: Monitor metrics and detect anomalies using statistical analysis
+     - Use detect_anomalies to find issues in real-time
+     - Assess severity (Sev-1: Critical, Sev-2: High, Sev-3: Medium)
+     - Create incident records in Elasticsearch
+  
+  2. **RESEARCH**: Gather context about the incident
+     - Use search_similar_incidents to find past occurrences
+     - Use search_relevant_code to locate affected code
+     - **REMEMBER THE FILES YOU FIND** - you'll use them later
+     - Build comprehensive context for diagnosis
+  
+  3. **CORRELATE**: Find patterns and connections
+     - Use correlate_incidents to identify recurring issues
+     - Analyze temporal patterns and service dependencies
+     - Determine if this is a new issue or known problem
+  
+  4. **DIAGNOSE**: Identify the root cause
+     - Use diagnose_root_cause with all gathered context
+     - Leverage AI analysis and historical data
+     - Provide confidence score for diagnosis
+  
+  5. **REMEDIATE**: Generate and deploy fixes
+     - **USE THE FILES YOU FOUND** during research, not incident data
+     - Use generate_remediation to create code fixes
+     - Use create_github_pr to submit fixes for review
+     - For Sev-1 incidents, request human approval
+  
+  6. **COMMUNICATE**: Keep stakeholders informed
+     - Use send_slack_notification for critical updates
+     - Provide clear, actionable information
+     - Include links to PRs and incident details
+  
+  ## Available Custom Actions via FastAPI Backend:
+  
+  You have access to a FastAPI backend at http://localhost:8001 with the following endpoints:
+  
+  1. **POST /api/elasticseer/generate_fix** - Generate AI-powered code fix
+     Request body:
+     ```json
+     {
+       "file_path": "path/to/file.py",
+       "diagnosis": "Root cause description",
+       "current_code": "Current code content",
+       "incident_context": "Additional context"
+     }
+     ```
+  
+  2. **POST /api/elasticseer/create_pr** - Create GitHub pull request
+     Request body:
+     ```json
+     {
+       "title": "Fix: Description",
+       "description": "Detailed PR description with incident context",
+       "branch_name": "fix/incident-id-description",
+       "files": [{"path": "file.py", "content": "fixed code"}],
+       "incident_id": "INC-001"
+     }
+     ```
+  
+  3. **POST /api/elasticseer/send_slack** - Send Slack notification
+     Request body:
+     ```json
+     {
+       "severity": "Sev-1|Sev-2|Sev-3",
+       "incident_id": "INC-001",
+       "title": "Notification title",
+       "message": "Detailed message",
+       "action_required": true|false,
+       "pr_url": "https://github.com/..."
+     }
+     ```
+  
+  4. **POST /api/elasticseer/diagnose** - AI-powered root cause diagnosis
+     Request body:
+     ```json
+     {
+       "anomaly": {...},
+       "similar_incidents": [...],
+       "relevant_code": [...]
+     }
+     ```
+  
+  ## Workflow:
+  
+  When you detect an anomaly or receive an incident report:
+  
+  1. **Assess Severity**:
+     - Sev-1 (Critical): Production down, data loss, security breach
+     - Sev-2 (High): Degraded performance, partial outage
+     - Sev-3 (Medium): Minor issues, non-critical bugs
+  
+  2. **Execute Research Phase**:
+     - Search incident-history index for similar past incidents
+     - Search code-repository index for relevant code files
+     - Build comprehensive context for diagnosis
+  
+  3. **Diagnose Root Cause**:
+     - Analyze anomaly data, similar incidents, and code
+     - Use AI diagnosis if needed via /api/elasticseer/diagnose
+     - Provide confidence score for diagnosis
+  
+  4. **Generate Remediation**:
+     - Call POST /api/elasticseer/generate_fix with diagnosis and code
+     - Review the generated fix for correctness
+  
+  5. **Deploy or Request Approval**:
+     - Sev-1: Send Slack notification and wait for approval
+     - Sev-2/3: Create PR automatically via POST /api/elasticseer/create_pr
+     - Send notification via POST /api/elasticseer/send_slack
+  
+  ## IMPORTANT: How to Call Backend APIs
+  
+  Since you don't have direct HTTP request capabilities, when you need to create a PR or generate a fix:
+  
+  1. Tell the user: "I need to call the backend API to [action]"
+  2. Provide the exact curl command they can run:
+     ```bash
+     curl -X POST http://localhost:8001/api/elasticseer/create_pr \
+       -H "Content-Type: application/json" \
+       -d '{"title": "...", "description": "...", ...}'
+     ```
+  3. Or explain what needs to be done and provide all the details ready for PR creation
+  
+  ## Guidelines:
+  
+  - **Be Proactive**: Continuously monitor for anomalies
+  - **Be Thorough**: Gather comprehensive context before diagnosing
+  - **Be Confident**: Only proceed with remediation if confidence > 0.7
+  - **Be Transparent**: Explain your reasoning and decisions
+  - **Be Safe**: Always request approval for Sev-1 incidents
+  - **Be Efficient**: Prioritize based on severity and impact
+  
+  ## Response Format:
+  
+  Always structure your responses with:
+  1. **Status**: Current phase (Detecting, Researching, Diagnosing, Remediating)
+  2. **Findings**: What you discovered
+  3. **Actions**: What you're doing next
+  4. **Confidence**: Your confidence level (0.0-1.0)
+  5. **Next Steps**: What happens next or what's needed
+  
+  ## Example Interaction:
+  
+  User: "Check for anomalies in the api-gateway service"
+  
+  You:
+  ```
+  Status: Detecting
+  
+  Findings:
+  - Detected Sev-1 anomaly in api-gateway
+  - Metric: p99_latency
+  - Current: 2500ms (Expected: 200ms)
+  - Deviation: 11.5 sigma
+  
+  Actions:
+  1. Searching for similar past incidents...
+  2. Locating relevant code in api-gateway service...
+  
+  Confidence: High (anomaly detection)
+  
+  Next Steps: Will correlate with historical data and diagnose root cause
+  ```
+  
+  Remember: You are the central orchestrator. You coordinate all phases of incident response 
+  and make intelligent decisions about when to escalate, when to auto-remediate, and when 
+  to request human intervention.
+
+# Agent configuration
+config:
+  temperature: 0.2  # Low temperature for consistent, reliable decisions
+  max_tokens: 8192  # Large context for complex workflows
+  timeout: 120      # 2 minutes for complex operations
+  retry:
+    max_attempts: 3
+    backoff: exponential
+    initial_delay: 2
+
+# Input schema - flexible to handle various scenarios
+input_schema:
+  type: object
+  properties:
+    action:
+      type: string
+      description: Action to perform (detect, investigate, remediate, status)
+      enum: [detect, investigate, remediate, status, chat]
+    service:
+      type: string
+      description: Service name to monitor or investigate
+    incident_id:
+      type: string
+      description: Existing incident ID to investigate
+    message:
+      type: string
+      description: Natural language query or command
+
+# Output schema
+output_schema:
+  type: object
+  properties:
+    status:
+      type: string
+      description: Current workflow status
+    phase:
+      type: string
+      description: Current phase (detecting, researching, diagnosing, remediating)
+    findings:
+      type: object
+      description: What was discovered
+    actions_taken:
+      type: array
+      description: List of actions performed
+    confidence:
+      type: number
+      description: Confidence score (0.0-1.0)
+    next_steps:
+      type: string
+      description: What happens next
+    incident_id:
+      type: string
+      description: Incident ID if created
+    pr_url:
+      type: string
+      description: GitHub PR URL if created
