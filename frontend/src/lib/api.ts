@@ -1,9 +1,8 @@
 /// <reference types="vite/client" />
 import axios from 'axios';
 
-// In development, Vite proxy handles /api -> localhost:8001
-// In production, we need the full backend URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+// Use relative paths to allow server-side proxying (Vite in dev, Vercel in prod)
+const API_BASE_URL = '';
 
 const api = axios.create({
     baseURL: API_BASE_URL,
