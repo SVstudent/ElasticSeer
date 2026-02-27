@@ -13,7 +13,7 @@ ElasticSeer is a multi-agent AI platform that handles **complete incident respon
 │                    ElasticSeer Multi-Agent System               │
 ├────────────┬────────────────────────────┬──────────────────────┤
 │  Observer  │     Reasoning Agent        │   Action Agents      │
-│  Engine    │     (Gemini 2.0 Flash)     │                      │
+│  Engine    │     (Gemini 2.5 Flash)     │                      │
 │            │                            │  ┌─────────────────┐ │
 │  Anomaly   │  ┌──────────────────────┐  │  │ GitHub PR Agent │ │
 │  Detection │  │ Agent Builder + MCP  │  │  │ Slack Agent     │ │
@@ -89,7 +89,7 @@ One natural language prompt triggers a **complete Elastic Workflow**:
 | **GitHub** | Automated PR creation with AI-generated code fixes |
 | **Slack** | Real-time team notifications and war room alerts |
 | **Jira** | Incident tracking, ticket creation, escalation |
-| **Gemini 2.0 Flash** | Reasoning, code generation, postmortem writing |
+| **Gemini 2.5 Flash** | Reasoning, code generation, postmortem writing |
 
 ---
 
@@ -115,7 +115,7 @@ One natural language prompt triggers a **complete Elastic Workflow**:
 
 - **Frontend**: React + TypeScript + Vite + TailwindCSS
 - **Backend**: FastAPI + Python
-- **AI**: Google Gemini 2.0 Flash (reasoning + code generation + postmortems)
+- **AI**: Google Gemini 2.5 Flash (reasoning + code generation + postmortems)
 - **Data**: Elasticsearch (incidents, metrics, code repository, activity logs)
 - **Agent Framework**: Elastic Agent Builder + MCP Server
 - **Query Language**: ES|QL (via Agent Builder MCP tools)
