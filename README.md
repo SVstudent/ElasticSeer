@@ -5,7 +5,7 @@
 ElasticSeer is a multi-agent AI platform that handles **complete incident response workflows** — from anomaly detection to code fix to team notification — all through natural language chat. Built with **Elastic Agent Builder**, **Elasticsearch**, **ES|QL**, and **Elastic Workflows**.
 
 ---
-
+MIT LICENSE(OSI) VERIFIED
 ## 🏗️ Architecture
 
 ```
