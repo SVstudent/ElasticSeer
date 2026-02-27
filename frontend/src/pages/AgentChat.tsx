@@ -3,6 +3,7 @@ import { Send, Sparkles, Menu, Plus, Trash2, Bot, User, AlertCircle, LayoutDashb
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import api from '../lib/api';
+import axios from 'axios';
 import IncidentDashboard from '../components/IncidentDashboard';
 import ObserverWidget from '../components/ObserverWidget';
 
@@ -212,7 +213,7 @@ export default function AgentChat() {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
         role: 'assistant',
-        content: `❌ **Error**: ${api.isAxiosError?.(error) || (error as any)?.isAxiosError ? (error as any).message : 'Failed to communicate with the agent. Please check your connection and try again.'}`,
+        content: `❌ **Error**: ${axios.isAxiosError(error) ? error.message : 'Failed to communicate with the agent. Please check your connection and try again.'}`,
         timestamp: new Date().toISOString(),
         isError: true,
       };

@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import axios from 'axios';
 
 // In development, Vite proxy handles /api -> localhost:8001
