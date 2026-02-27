@@ -280,7 +280,11 @@ CRITICAL - ADAPTIVE FILE SELECTION:
                 add_reasoning("fallback_response", "⚠️ Using fallback response generation...")
             
             # Fallback response
-            fallback_response = "✅ Actions completed successfully:\n\n"
+            fallback_response = "✅ **Actions completed successfully!**\n\n"
+            
+            # Proof of Work Section
+            fallback_response += "### 🛡️ Proof of Work\n"
+            
             for func_result in function_results:
                 func_name = func_result["function"]
                 result = func_result["result"]
@@ -289,33 +293,32 @@ CRITICAL - ADAPTIVE FILE SELECTION:
                     workflow = result.get("results", {})
                     incident_id = result.get("incident_id")
                     
-                    fallback_response += f"✅ **Complete Autonomous Workflow Executed**\n\n"
-                    
                     if workflow.get("incident_registration", {}).get("success"):
-                        fallback_response += f"1. ✅ Incident {incident_id} registered\n"
+                        fallback_response += f"- **Incident Registered**: `{incident_id}`\n"
                     
                     if workflow.get("code_search", {}).get("success"):
                         target_file = workflow["code_search"].get("target_file")
-                        fallback_response += f"2. ✅ Found code file: {target_file}\n"
+                        fallback_response += f"- **Code Investigated**: `{target_file}`\n"
                     
                     if workflow.get("pr_creation", {}).get("success"):
                         pr_num = workflow["pr_creation"].get("pr_number")
                         pr_url = workflow["pr_creation"].get("pr_url")
-                        fallback_response += f"3. ✅ GitHub PR #{pr_num} created: {pr_url}\n"
+                        fallback_response += f"- **Pull Request created**: [PR #{pr_num}]({pr_url})\n"
                     
                     if workflow.get("slack_alert", {}).get("success"):
                         channel = workflow["slack_alert"].get("channel", "#general")
-                        fallback_response += f"4. ✅ Slack alert sent to {channel}\n"
+                        fallback_response += f"- **Slack Notification**: Sent to `{channel}`\n"
                     
                     if workflow.get("jira_ticket", {}).get("success"):
                         ticket_id = workflow["jira_ticket"].get("ticket_id")
-                        ticket_url = workflow["jira_ticket"].get("url")
-                        if ticket_url:
-                            fallback_response += f"5. ✅ Jira ticket {ticket_id} created: {ticket_url}\n"
+                        # Construct Jira URL if settings allow
+                        jira_url = f"{settings.jira_url}/browse/{ticket_id}" if settings.jira_url else None
+                        if jira_url:
+                            fallback_response += f"- **Jira Ticket created**: [{ticket_id}]({jira_url})\n"
                         else:
-                            fallback_response += f"5. ✅ Jira ticket {ticket_id} created\n"
+                            fallback_response += f"- **Jira Ticket created**: `{ticket_id}`\n"
                     
-                    fallback_response += "\n**All autonomous actions completed!**\n\n"
+                    fallback_response += "\n> [!NOTE]\n> The autonomous workflow has finished all requested actions. You can review the details using the links above."
             
             add_reasoning("response_ready", "✅ Fallback response generated!")
             

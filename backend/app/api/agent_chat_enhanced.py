@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/agent", tags=["agent-enhanced"])
 
 class ChatMessage(BaseModel):
     message: str
-    conversation_history: List[Dict[str, str]] = []
+    conversation_history: List[Dict[str, Any]] = []
 
 
 def get_github_client():
@@ -71,7 +71,7 @@ async def chat_enhanced(request: ChatMessage):
     ])
     
     if detected_files and is_work_request:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             try:
                 # Check if file exists in Elasticsearch
                 for file_path in detected_files[:1]:  # Check first detected file
@@ -138,10 +138,10 @@ async def chat_enhanced(request: ChatMessage):
     
     # Delegate EVERYTHING to the real AI agent
     # This makes responses truly adaptive and intelligent
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             response = await client.post(
-                "http://localhost:8001/api/agent/chat",
+                "http://localhost:8001/api/agent/chat_with_reasoning",
                 json=request.dict()
             )
             

@@ -12,12 +12,14 @@ This replicates the full Kibana Agent Builder experience via API!
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
+from datetime import datetime, timedelta
 import httpx
 import logging
 import json
 import google.generativeai as genai
 from app.core.config import settings
 from elasticsearch import Elasticsearch
+from app.api.activity_log import log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,8 @@ class ChatMessage(BaseModel):
     role: str
     content: str
     timestamp: str
+    isError: Optional[bool] = None
+    reasoning_trace: Optional[List[Any]] = None
 
 
 class ChatRequest(BaseModel):
@@ -260,6 +264,20 @@ GEMINI_FUNCTIONS = [
             },
             "required": ["title", "service", "severity", "description", "search_pattern"]
         }
+    },
+    {
+        "name": "generate_postmortem",
+        "description": "Generate a comprehensive incident postmortem report for a resolved or investigated incident. Aggregates the full timeline: incident details, anomaly data, autonomous actions taken (PRs, Slack alerts, Jira tickets), root cause analysis, and recommendations. Use this when the user asks for a postmortem, incident summary, or after-action report.",
+        "parameters": {
+            "type_": "OBJECT",
+            "properties": {
+                "incident_id": {
+                    "type_": "STRING",
+                    "description": "The incident ID to generate a postmortem for (e.g., 'INC-1010')"
+                }
+            },
+            "required": ["incident_id"]
+        }
     }
 ]
 
@@ -269,7 +287,7 @@ async def call_mcp_tool(tool_name: str, arguments: Dict[str, Any] = None) -> Dic
     
     mcp_url = f"{settings.kibana_url.rstrip('/')}/api/agent_builder/mcp"
     
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=300.0) as client:
         response = await client.post(
             mcp_url,
             headers={
@@ -370,7 +388,7 @@ async def execute_function(function_name: str, arguments: Dict[str, Any]) -> Dic
             logger.info(f"📊 Starting comprehensive metrics analysis for {service}")
             
             # Call the rich analysis endpoint
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
                     "http://localhost:8001/api/analysis/comprehensive_metrics",
                     json={
@@ -444,7 +462,7 @@ async def execute_function(function_name: str, arguments: Dict[str, Any]) -> Dic
                 code_content = code_file["content"]
             
             # Generate fix and create PR via external endpoints
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 # Generate AI-powered fix
                 fix_response = await client.post(
                     "http://localhost:8001/api/elasticseer/generate_fix",
@@ -489,7 +507,7 @@ async def execute_function(function_name: str, arguments: Dict[str, Any]) -> Dic
                 }
         
         elif function_name == "send_slack_alert":
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
                     "http://localhost:8001/api/elasticseer/send_slack",
                     json=arguments
@@ -500,7 +518,7 @@ async def execute_function(function_name: str, arguments: Dict[str, Any]) -> Dic
                 return {"success": False, "error": response.text}
         
         elif function_name == "create_jira_ticket":
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
                     "http://localhost:8001/api/elasticseer/create_jira_ticket",
                     json=arguments
@@ -511,7 +529,7 @@ async def execute_function(function_name: str, arguments: Dict[str, Any]) -> Dic
                 return {"success": False, "error": response.text}
         
         elif function_name == "register_incident":
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
                     "http://localhost:8001/api/incidents/register",
                     json=arguments
@@ -533,16 +551,16 @@ async def execute_function(function_name: str, arguments: Dict[str, Any]) -> Dic
             logger.info("🚀 Starting COMPLETE autonomous incident response workflow")
             
             workflow_results = {
-                "incident_registration": None,
-                "code_search": None,
-                "pr_creation": None,
-                "slack_alert": None,
-                "jira_ticket": None
+                "incident_registration": {},
+                "code_search": {},
+                "pr_creation": {},
+                "slack_alert": {},
+                "jira_ticket": {}
             }
             
             # Step 1: Register Incident
             logger.info("Step 1: Registering incident...")
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
                     "http://localhost:8001/api/incidents/register",
                     json={
@@ -588,7 +606,7 @@ async def execute_function(function_name: str, arguments: Dict[str, Any]) -> Dic
             # Step 3: Create GitHub PR
             if target_file:
                 logger.info("Step 3: Creating GitHub PR...")
-                async with httpx.AsyncClient(timeout=120.0) as client:
+                async with httpx.AsyncClient(timeout=300.0) as client:
                     # Get incident details
                     incident_result = await call_mcp_tool("elasticseer_get_incident_by_id", {"incident_id": incident_id})
                     incidents = parse_esql_results(incident_result)
@@ -653,7 +671,7 @@ async def execute_function(function_name: str, arguments: Dict[str, Any]) -> Dic
             
             # Step 4: Send Slack Alert
             logger.info("Step 4: Sending Slack alert...")
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 pr_url = workflow_results["pr_creation"].get("pr_url", "N/A") if workflow_results["pr_creation"].get("success") else "N/A"
                 jira_ticket_id = workflow_results.get("jira_ticket", {}).get("ticket_id")
                 jira_url = f"{settings.jira_url}/browse/{jira_ticket_id}" if jira_ticket_id and settings.jira_url else None
@@ -683,7 +701,7 @@ async def execute_function(function_name: str, arguments: Dict[str, Any]) -> Dic
             
             # Step 5: Create Jira Ticket
             logger.info("Step 5: Creating Jira ticket...")
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 jira_response = await client.post(
                     "http://localhost:8001/api/elasticseer/create_jira_ticket",
                     json={
@@ -706,11 +724,174 @@ async def execute_function(function_name: str, arguments: Dict[str, Any]) -> Dic
             
             logger.info("🎉 COMPLETE autonomous workflow finished!")
             
+            # Log workflow execution
+            await log_activity(
+                activity_type="workflow_executed",
+                summary=f"Autonomous workflow completed for incident {incident_id}",
+                details={
+                    "incident_id": incident_id,
+                    "title": arguments.get("title"),
+                    "service": arguments.get("service"),
+                    "severity": arguments.get("severity"),
+                    "workflow_results": workflow_results
+                },
+                status="success"
+            )
+            
             return {
                 "success": True,
                 "workflow": "complete_autonomous_response",
                 "incident_id": incident_id,
                 "results": workflow_results
+            }
+        
+        elif function_name == "generate_postmortem":
+            incident_id = arguments.get("incident_id")
+            logger.info(f"📋 Generating postmortem report for {incident_id}")
+            
+            # 1. Get incident details via MCP
+            incident_result = await call_mcp_tool("elasticseer_get_incident_by_id", {"incident_id": incident_id})
+            incidents = parse_esql_results(incident_result)
+            incident = incidents[0] if incidents else {}
+            
+            # 2. Get related activity-log entries from Elasticsearch
+            es = Elasticsearch(
+                settings.elasticsearch_url,
+                api_key=settings.elasticsearch_api_key
+            )
+            
+            related_actions = []
+            try:
+                if es.indices.exists(index="activity-log"):
+                    activity_result = es.search(
+                        index="activity-log",
+                        body={
+                            "query": {"bool": {"should": [
+                                {"match": {"details.incident_id": incident_id}},
+                                {"match": {"summary": incident_id}},
+                            ], "minimum_should_match": 1}},
+                            "sort": [{"timestamp": {"order": "asc"}}],
+                            "size": 50
+                        }
+                    )
+                    related_actions = [hit["_source"] for hit in activity_result["hits"]["hits"]]
+            except Exception as e:
+                logger.warning(f"Could not fetch activity log: {e}")
+            
+            # 3. Get anomaly data for the service
+            service = incident.get("anomaly.service") or incident.get("service", "unknown")
+            anomalies = []
+            try:
+                anomaly_result = await call_mcp_tool("elasticseer_get_metrics_anomalies", {"service": service})
+                anomalies = parse_esql_results(anomaly_result)
+            except Exception:
+                pass
+            
+            # 4. Build the context and use Gemini to write the postmortem
+            timeline_entries = []
+            prs_created = []
+            slack_alerts = []
+            jira_tickets = []
+            
+            for action in related_actions:
+                entry = {
+                    "time": action.get("timestamp", ""),
+                    "type": action.get("type", ""),
+                    "summary": action.get("summary", ""),
+                }
+                timeline_entries.append(entry)
+                
+                if action.get("type") in ["pr_created", "github_pr"]:
+                    prs_created.append(action.get("details", {}))
+                elif action.get("type") in ["slack_message", "slack_alert", "slack_sent"]:
+                    slack_alerts.append(action.get("details", {}))
+                elif action.get("type") in ["jira_created", "jira_ticket"]:
+                    jira_tickets.append(action.get("details", {}))
+            
+            # Generate postmortem with Gemini
+            postmortem_model = genai.GenerativeModel(settings.gemini_model)
+            postmortem_prompt = f"""Generate a professional incident postmortem report in Markdown format for the following incident.
+
+INCIDENT DATA:
+- ID: {incident_id}
+- Service: {service}
+- Severity: {incident.get('severity', 'Unknown')}
+- Status: {incident.get('status', 'Unknown')}
+- Description: {incident.get('description', 'N/A')}
+- Root Cause: {incident.get('diagnosis.root_cause', 'Under investigation')}
+- Confidence: {incident.get('diagnosis.confidence', 'N/A')}
+
+TIMELINE OF ACTIONS ({len(timeline_entries)} events):
+{json.dumps(timeline_entries[:20], indent=2, default=str)}
+
+AUTONOMOUS ACTIONS TAKEN:
+- GitHub PRs Created: {len(prs_created)} {json.dumps(prs_created[:5], default=str) if prs_created else ''}
+- Slack Alerts Sent: {len(slack_alerts)}
+- Jira Tickets Created: {len(jira_tickets)} {json.dumps(jira_tickets[:5], default=str) if jira_tickets else ''}
+
+RELATED ANOMALIES ({len(anomalies)} detected):
+{json.dumps(anomalies[:5], indent=2, default=str) if anomalies else 'None available'}
+
+FORMAT THE REPORT WITH THESE SECTIONS:
+# 📋 Postmortem Report: {incident_id}
+
+## Executive Summary
+(2-3 sentence overview)
+
+## Incident Timeline
+(Table with Time | Event | Details)
+
+## Root Cause Analysis  
+(What happened and why)
+
+## Impact Assessment
+(Services affected, duration, user impact)
+
+## Autonomous Actions Taken
+(What ElasticSeer did automatically — PRs, alerts, tickets with links)
+
+## Lessons Learned & Recommendations
+(3-5 actionable items to prevent recurrence)
+
+## Metrics
+| Metric | Value |
+|---|---|
+| Time to Detection | ... |
+| Time to Response | ... |
+| Autonomous Actions | ... |
+| Services Affected | ... |
+
+Make the report detailed, professional, and data-driven. Include any actual PR URLs, ticket IDs, and timestamps from the data provided."""
+
+            postmortem_response = postmortem_model.generate_content(postmortem_prompt)
+            postmortem_text = postmortem_response.text
+            
+            # Log the postmortem generation
+            await log_activity(
+                activity_type="postmortem_generated",
+                summary=f"Postmortem report generated for {incident_id}",
+                details={
+                    "incident_id": incident_id,
+                    "service": service,
+                    "timeline_events": len(timeline_entries),
+                    "prs_created": len(prs_created),
+                    "slack_alerts": len(slack_alerts),
+                    "jira_tickets": len(jira_tickets),
+                },
+                status="success"
+            )
+            
+            return {
+                "success": True,
+                "incident_id": incident_id,
+                "postmortem": postmortem_text,
+                "stats": {
+                    "timeline_events": len(timeline_entries),
+                    "prs_created": len(prs_created),
+                    "slack_alerts": len(slack_alerts),
+                    "jira_tickets": len(jira_tickets),
+                    "anomalies_found": len(anomalies),
+                }
             }
         
         else:
@@ -735,6 +916,14 @@ async def chat_with_agent(request: ChatRequest):
     reasoning_trace = []  # Track agent's thought process
     
     try:
+        # Log chat interaction
+        await log_activity(
+            activity_type="chat",
+            summary=f"User message: {request.message[:100]}...",
+            details={"message": request.message, "history_length": len(request.conversation_history)},
+            status="processing"
+        )
+        
         reasoning_trace.append({
             "step": "initialization",
             "thought": "Received user message, initializing agent...",
@@ -763,6 +952,7 @@ Your capabilities:
 - Analyze patterns and provide actionable insights
 - **EXECUTE COMPLETE AUTONOMOUS WORKFLOWS IN ONE FUNCTION CALL**
 - **PROVIDE COMPREHENSIVE METRICS ANALYSIS with tables, trends, and visualizations**
+- **GENERATE POSTMORTEM REPORTS** with full incident timeline, root cause, actions taken, and recommendations
 
 CRITICAL - USE autonomous_incident_response FOR COMPLETE WORKFLOWS:
 When user says "investigate, fix, create PR, and alert team" or similar complete workflow requests:
@@ -869,6 +1059,18 @@ Remember: For COMPLETE workflows, use autonomous_incident_response() - it's ONE 
                 
                 # If we got a response, return it
                 if final_text:
+                    # Log successful chat completion
+                    await log_activity(
+                        activity_type="chat",
+                        summary=f"Agent response: {final_text[:100]}...",
+                        details={
+                            "message": request.message,
+                            "response": final_text,
+                            "functions_called": [fc.name for fc in function_calls]
+                        },
+                        status="success"
+                    )
+                    
                     return ChatResponse(
                         response=final_text,
                         sources=["gemini-2.5-flash", "mcp-server"] + [fc.name for fc in function_calls],
@@ -911,9 +1113,9 @@ Remember: For COMPLETE workflows, use autonomous_incident_response() - it's ONE 
                     
                     if workflow.get("jira_ticket", {}).get("success"):
                         ticket_id = workflow["jira_ticket"].get("ticket_id")
-                        ticket_url = workflow["jira_ticket"].get("url")
-                        if ticket_url:
-                            fallback_response += f"5. ✅ Jira ticket {ticket_id} created: {ticket_url}\n"
+                        jira_url = f"{settings.jira_url}/browse/{ticket_id}" if settings.jira_url else None
+                        if jira_url:
+                            fallback_response += f"5. ✅ Jira ticket [{ticket_id}]({jira_url}) created\n"
                         else:
                             fallback_response += f"5. ✅ Jira ticket {ticket_id} created\n"
                     
@@ -956,6 +1158,19 @@ Remember: For COMPLETE workflows, use autonomous_incident_response() - it's ONE 
                 
                 elif result.get("success") == False:
                     fallback_response += f"❌ **{func_name} failed**: {result.get('error', 'Unknown error')}\n\n"
+            
+            # Log successful chat completion with fallback
+            await log_activity(
+                activity_type="chat",
+                summary=f"Agent response (fallback): {fallback_response[:100]}...",
+                details={
+                    "message": request.message,
+                    "response": fallback_response,
+                    "functions_called": [fc.name for fc in function_calls],
+                    "fallback_used": True
+                },
+                status="success"
+            )
             
             return ChatResponse(
                 response=fallback_response,

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AlertCircle, Activity, TrendingUp, Clock, ExternalLink, RefreshCw, ChevronRight, ChevronLeft } from 'lucide-react';
-import axios from 'axios';
+import api from '../lib/api';
 
 interface Incident {
   id: string;
@@ -39,7 +39,7 @@ export default function IncidentDashboard({ onIncidentClick }: IncidentDashboard
 
   const fetchIncidents = async () => {
     try {
-      const response = await axios.get('/api/incidents/list?limit=50');
+      const response = await api.get('/api/incidents/list?limit=50');
       if (response.data.success) {
         setIncidents(response.data.incidents);
         setLastUpdate(new Date());
@@ -162,7 +162,7 @@ export default function IncidentDashboard({ onIncidentClick }: IncidentDashboard
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        
+
         <div className="flex flex-col items-center gap-2">
           <AlertCircle className="h-5 w-5 text-elastic-blue" />
           <div className="text-xs font-semibold text-elastic-darkGray writing-mode-vertical">
@@ -205,11 +205,10 @@ export default function IncidentDashboard({ onIncidentClick }: IncidentDashboard
                 setAutoRefresh(!autoRefresh);
                 if (!autoRefresh) fetchIncidents();
               }}
-              className={`p-1.5 rounded-md transition-colors ${
-                autoRefresh
-                  ? 'bg-elastic-lightBlue text-elastic-blue'
-                  : 'text-elastic-gray hover:bg-elastic-lightGray'
-              }`}
+              className={`p-1.5 rounded-md transition-colors ${autoRefresh
+                ? 'bg-elastic-lightBlue text-elastic-blue'
+                : 'text-elastic-gray hover:bg-elastic-lightGray'
+                }`}
               title={autoRefresh ? 'Auto-refresh enabled (30s)' : 'Auto-refresh disabled'}
             >
               <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin-slow' : ''}`} />
@@ -252,11 +251,10 @@ export default function IncidentDashboard({ onIncidentClick }: IncidentDashboard
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab
-                  ? 'border-elastic-blue text-elastic-blue'
-                  : 'border-transparent text-elastic-gray hover:text-elastic-darkGray'
-              }`}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === tab
+                ? 'border-elastic-blue text-elastic-blue'
+                : 'border-transparent text-elastic-gray hover:text-elastic-darkGray'
+                }`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
               <span className="ml-1.5 text-xs">
@@ -276,9 +274,9 @@ export default function IncidentDashboard({ onIncidentClick }: IncidentDashboard
           </div>
         ) : (
           <div className="divide-y divide-elastic-border">
-            {filteredIncidents.map((incident) => (
+            {filteredIncidents.map((incident, index) => (
               <div
-                key={incident.id}
+                key={`${incident.id}-${index}`}
                 onClick={() => onIncidentClick(incident.id)}
                 className="p-4 hover:bg-elastic-lightGray cursor-pointer transition-colors"
               >

@@ -17,6 +17,7 @@ import google.generativeai as genai
 from github import Github
 import httpx
 from app.core.config import settings
+from app.api.activity_log import log_activity
 
 router = APIRouter(prefix="/api/elasticseer", tags=["elasticseer-tools"])
 
@@ -292,6 +293,21 @@ This document contains the proposed fix that should be applied manually.
         if request.incident_id:
             pr.add_to_labels(f"incident-{request.incident_id}")
         
+        # Log PR creation activity
+        await log_activity(
+            activity_type="pr_created",
+            summary=f"GitHub PR #{pr.number} created: {request.title}",
+            details={
+                "pr_number": pr.number,
+                "pr_url": pr.html_url,
+                "branch": request.branch_name,
+                "incident_id": request.incident_id,
+                "files_changed": len(files_updated),
+                "files": files_updated
+            },
+            status="success"
+        )
+        
         return {
             "success": True,
             "pr_number": pr.number,
@@ -379,6 +395,22 @@ async def send_slack_notification(request: SlackNotificationRequest):
     print(message)
     print('='*60)
     
+    # Log Slack activity
+    await log_activity(
+        activity_type="slack_sent",
+        summary=f"Slack alert sent: {request.title}",
+        details={
+            "severity": request.severity,
+            "incident_id": request.incident_id,
+            "title": request.title,
+            "message": request.message,
+            "channel": settings.slack_war_room_channel or "#elasticseer-alerts",
+            "pr_url": request.pr_url,
+            "jira_url": getattr(request, 'jira_url', None)
+        },
+        status="success"
+    )
+    
     return {
         "success": True,
         "channel": settings.slack_war_room_channel or "#elasticseer-alerts",
@@ -461,6 +493,20 @@ async def create_jira_ticket(request: CreateJiraTicketRequest):
             priority=request.priority,
             incident_id=request.incident_id,
             labels=request.labels
+        )
+        
+        # Log Jira ticket creation
+        await log_activity(
+            activity_type="jira_created",
+            summary=f"Jira ticket created: {result.get('ticket_id', 'N/A')}",
+            details={
+                "ticket_id": result.get("ticket_id"),
+                "ticket_url": result.get("url"),
+                "summary": request.summary,
+                "priority": request.priority,
+                "incident_id": request.incident_id
+            },
+            status="success" if result.get("success") else "failed"
         )
         
         return result
